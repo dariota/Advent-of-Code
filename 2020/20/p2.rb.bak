@@ -1,0 +1,293 @@
+require 'set'
+
+started = Time.now
+
+class Transform
+  attr_reader :rotation, :vertical, :horizontal
+  
+  def initialize(rotation, vertical, horizontal)
+    @rotation = rotation
+    @vertical = vertical
+    @horizontal = horizontal
+  end
+
+  def self.all
+    [false, true].product([false, true], (0..3).to_a).map do |vertical, horizontal, rotation|
+      new(rotation, vertical, horizontal)
+    end
+  end
+end
+
+class Tile
+  # id: int
+  # matching: hash { side => hash { other_tile_id => [hash { side => value }] } }
+  # variations: [hash { pattern: [lines], borders: hash { side => value } }]
+  attr_reader :id, :matching, :variations
+
+  def initialize(id, pattern)
+    @id = id
+    @variations = all_variations(pattern)
+  end
+
+  def border_values
+    @border_values ||= begin
+      values = Set.new
+      variations.each do |tile|
+        values.add(tile.right)
+      end
+      values
+    end
+  end
+
+  def all_variations(pattern)
+    Transform.all.map do |transformation|
+      hsh = self.class.transform(pattern, transformation)
+      PlacedTile.new(id, hsh[:borders], hsh[:pattern])
+    end.uniq
+  end
+
+  def find_matches(tiles)
+    @matching = []
+    tiles.each do |tile|
+      next if tile.id == id
+      next if border_values.intersection(tile.border_values).empty?
+
+      @matching << tile.id 
+    end
+  end
+
+  def self.transform(pattern, transformation)
+    transformed = pattern
+
+    transformation.rotation.times do
+      new_rotation = transformed.map(&:dup)
+      transformed.each_index do |y|
+        y_row = transformed[y]
+        y_row.chars.each_index do |x|
+          new_rotation[x][pattern.length - y - 1] = y_row[x]
+        end
+      end
+      transformed = new_rotation
+    end
+
+    if transformation.vertical
+      original = transformed.map(&:dup)
+      original.each_index do |y|
+        y_row = original[y]
+        y_row.chars.each_index do |x|
+          transformed[pattern.length - y - 1][x] = y_row[x]
+        end
+      end
+    end
+
+    if transformation.horizontal
+      original = transformed.map(&:dup)
+      original.each_index do |y|
+        y_row = original[y]
+        y_row.chars.each_index do |x|
+          transformed[y][y_row.length - x - 1] = y_row[x]
+        end
+      end
+    end
+
+    { pattern: extract_pattern(transformed), borders: extract_borders(transformed) }
+  end
+
+  def self.opposing_border(border)
+    return @opposing_border[border] if defined?(@opposing_border)
+
+    base_border = { left: :right, top: :bottom }
+    @opposing_border = base_border.merge(base_border.invert)
+    @opposing_border[border]
+  end
+
+  def self.parse(tile)
+    id = tile.first.split(" ")[1].to_i
+
+    pattern = tile[1..]
+    pattern = pattern[0...-1] if pattern[-1].empty?
+
+    new(id, pattern)
+  end
+
+  def self.extract_pattern(pattern)
+    pattern[1..-2].map { |line| line[1..-2] }
+  end
+
+  def self.extract_borders(pattern)
+    multi_encode({
+      top: pattern[0],
+      left: pattern.map { |line| line[0] }.join(''),
+      right: pattern.map { |line| line[-1] }.join(''),
+      bottom: pattern[-1],
+    })
+  end
+
+  def to_s
+    "Tile #{id}:\n#{pattern.join("\n")}"
+  end
+
+  def self.show_borders(borders)
+    puts borders[:top].to_s(2).rjust(10, "0").gsub("0", '.').gsub("1", "#")
+    puts "#{borders[:left].to_s(2).rjust(10, "0")[1]}00000000#{borders[:right].to_s(2).rjust(10, "0")[1]}".gsub("0", '.').gsub("1", "#")
+    puts "#{borders[:left].to_s(2).rjust(10, "0")[2]}00000000#{borders[:right].to_s(2).rjust(10, "0")[2]}".gsub("0", '.').gsub("1", "#")
+    puts borders[:bottom].to_s(2).rjust(10, "0").gsub("0", '.').gsub("1", "#")
+  end
+
+  def self.multi_encode(borders)
+    encoded = {}
+    borders.each do |k, v|
+      encoded[k] = encode(v)
+    end
+    encoded
+  end
+
+  def self.encode(line)
+    line.gsub('.', '0').gsub('#', '1').to_i(2)
+  end
+end
+
+class PlacedTile
+  attr_reader :id, :borders, :pattern
+
+  def initialize(id, borders, pattern)
+    @id = id
+    @borders = borders
+    @pattern = pattern
+  end
+
+  def top
+    borders[:top]
+  end
+
+  def left
+    borders[:left]
+  end
+
+  def right
+    borders[:right]
+  end
+
+  def bottom
+    borders[:bottom]
+  end
+
+  def hash
+    @hash ||= begin
+      ((top & 0xFF) << 24) |
+        ((right & 0xFF) << 16) |
+        ((bottom & 0xFF) << 8) |
+        (left & 0xFF)
+    end
+  end
+
+  def eql?(other)
+    other.is_a?(PlacedTile) &&
+      other.left == left &&
+      other.top == top &&
+      other.bottom == bottom &&
+      other.right == right
+  end
+end
+
+input = File.open("input").lines.map(&:chomp).slice_when { |line| line.empty? }.to_a
+
+tiles = input.map { |tile| Tile.parse(tile) }
+
+tiles.each do |tile|
+  tile.find_matches(tiles)
+end
+
+square_side = Math.sqrt(input.count).round
+raise "Non square number of tiles #{input.count}" unless square_side * square_side == input.count
+
+def fill(tiling, used_ids, tiles, x, y)
+  return true if y == tiling.length
+
+  left_tile = tiling[y][x - 1] if x > 0
+  top_tile = tiling[y - 1][x] if y > 0
+
+  candidate_tiles = tiles.reject { |tile| used_ids.include?(tile.id) }.flat_map(&:variations)
+  if left_tile
+    candidate_tiles.select! { |tile| tile.left == left_tile.right }
+  end
+  if top_tile
+    candidate_tiles.select! { |tile| tile.top == top_tile.bottom }
+  end
+
+  return false if candidate_tiles.empty?
+
+  candidate_tiles.each do |tile|
+    used_ids.add(tile.id)
+    tiling[y][x] = tile
+
+    next_x = (x + 1) % tiling.length
+    next_y = next_x.zero? ? y + 1 : y
+    return true if fill(tiling, used_ids, tiles, next_x, next_y)
+
+    tiling[y].delete_at(x)
+    used_ids.delete(tile.id)
+  end
+
+  false
+end
+
+def stitch(tiling)
+  stitched = []
+  tiling.each do |row|
+    stitched_block = row.first.pattern.map(&:dup)
+    row[1..].each do |block|
+      block.pattern.each_index do |ind|
+        stitched_block[ind] += block.pattern[ind]
+      end
+    end
+    stitched << stitched_block
+  end
+  stitched.flatten
+end
+
+corners = tiles.select { |tile| tile.matching.count == 2 }
+images = []
+tiling = []
+square_side.times { tiling << [] }
+corners.each do |corner|
+  used_ids = Set.new([corner.id])
+  corner.variations.each do |variation|
+    tiling[0][0] = variation
+    if fill(tiling, used_ids, tiles, 1, 0)
+      images << stitch(tiling)
+    end
+  end
+end
+
+def find_monsters(image)
+  monsters = 0
+  monster_bottom = /..................#./
+  monster_middle = /#....##....##....###/
+  monster_top = /.#..#..#..#..#..#.../
+  image.each_index do |y|
+    next if y.zero? || y == image.length - 1
+
+    pos = 0
+    while pos = image[y].index(monster_middle, pos)
+      if image[y - 1].index(monster_top, pos) == pos &&
+          image[y + 1].index(monster_bottom, pos) == pos
+        monsters += 1
+      end
+      pos += 1
+    end
+  end
+
+  monsters
+end
+
+monster_size = 15
+images.each do |image|
+  monster_count = find_monsters(image)
+  puts "found #{monster_count} monsters in image"
+  next if monster_count.zero?
+
+  puts image.map(&:chars).flatten.select { |c| c == "#" }.length - monster_size * monster_count
+end
+
+puts Time.now - started
