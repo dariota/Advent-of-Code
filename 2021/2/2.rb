@@ -31,7 +31,7 @@ def p2(command_pairs)
   puts "Problem 2: #{horizontal * depth}"
 end
 
-input = File.open("input").readlines.map(&:chomp)
+input = File.readlines("input", chomp: true)
 command_pairs = input.map(&:split).map { |command, step| [command, step.to_i] }
 
 p1(command_pairs)

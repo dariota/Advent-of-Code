@@ -1,4 +1,4 @@
-input = File.open("input").readlines.map(&:chomp).map(&:to_i)
+input = File.readlines("input", chomp: true).map(&:to_i)
 
 # Take every value in overlapping pairs, and for each pair produce a 1 if increasing, 0 if
 # decreasing, then add up the results
