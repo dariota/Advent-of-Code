@@ -1,19 +1,14 @@
 def solve(initial, days_to_simulate)
-  current_day = [0] * 9
-
-  initial.each { |remaining| current_day[remaining] += 1 }
+  fish = [0] * 9
+  initial.each { |remaining| fish[remaining] += 1 }
 
   days_to_simulate.times do |count|
-    next_day = [0] * 9
-    (0..8).each do |day|
-      next_day[day] = current_day[day + 1]
-    end
-    next_day[8] = current_day[0]
-    next_day[6] += current_day[0]
-    current_day = next_day
+    reset_fish = fish[0]
+    fish.rotate!
+    fish[6] += reset_fish
   end
 
-  puts current_day.sum
+  fish.sum
 end
 
 def problem_1(initial)
