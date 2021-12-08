@@ -10,9 +10,8 @@ class Notes
     7 => "acf",
     8 => "abcdefg",
     9 => "abcdfg",
-  }
+  }.each_with_object({}) { |pair, hsh| hsh[pair.first] = pair.last.split("").to_a }
   INVERSE_MAPPING = BASE_MAPPING.invert
-  ARRAY_MAPPING = BASE_MAPPING.each_with_object({}) { |pair, hsh| hsh[pair.first] = pair.last.split("").to_a }
 
   attr_reader :output
 
@@ -24,13 +23,17 @@ class Notes
   def find_mapping
     to_decode = @input.sort_by(&:length)
     decoding = to_decode.delete_at(0)
-    potential_mappings = potential_mapping(decoding)
+    known_mapping = {}
+    potential_mappings = potential_mapping(decoding, known_mapping)
 
     to_decode.each do |decoding|
-      new_mappings = potential_mapping(decoding)
+      new_mappings = potential_mapping(decoding, known_mapping)
       potential_mappings = potential_mappings.flat_map do |mapping|
         non_conflicting_mappings = new_mappings.select { |new_mapping| mapping.all? { |k,v| new_mapping[k] == v || !new_mapping.key?(k)} }
         non_conflicting_mappings.map { |new_mapping| new_mapping.merge(mapping) }
+      end
+      known_mapping = potential_mappings.first.dup.keep_if do |k,v|
+        potential_mappings.all? { |mapping| mapping[k] == v }
       end
     end
     raise @input unless potential_mappings.count == 1
@@ -40,14 +43,17 @@ class Notes
 
   def decode
     mapping = find_mapping
-    output.map { |segments| INVERSE_MAPPING[segments.split("").map { |k| mapping[k] }.sort.join].to_s }.join.to_i
+    output.map { |segments| INVERSE_MAPPING[segments.split("").map { |k| mapping[k] }.sort] }.reduce { |ac, i| ac = ac * 10 + i }
   end
 
-  private def potential_mapping(input)
-    candidate_values = ARRAY_MAPPING.select { |k,v| v.length == input.length }
-    permutations = input.permutation
+  private def potential_mapping(input, known_mapping)
+    candidate_values = BASE_MAPPING.select { |k,v| v.length == input.length }
+    permutations = input.reject { |k| known_mapping.key?(k) }.permutation
 
-    mappings_by_candidate = candidate_values.values.map { |candidate| permutations.map { |perm| perm.zip(candidate) } }
+    mappings_by_candidate = candidate_values.values.map do |candidate|
+      unknown_candidate = candidate.reject { |k| known_mapping.values.include?(k) }
+      permutations.map { |perm| perm.zip(unknown_candidate) }
+    end
     mappings_by_candidate.flat_map { |candidate_mappings| candidate_mappings.flat_map { |mapping| Hash[mapping] } }.uniq
   end
 
