@@ -28,10 +28,12 @@ class Grid
   end
 
   def initialize(board)
-    @board = board
+    @board = []
 
     # Convert raw values to cells for the DSL
-    @board.each_with_index do |row, row_ind|
+    board.each_with_index do |row, row_ind|
+      @board << []
+
       row.each_with_index do |val, col_ind|
         @board[row_ind][col_ind] = Cell.new(val, row_ind, col_ind)
       end
@@ -87,8 +89,12 @@ class Grid
     end
   end
 
+  def dimensions
+    { rows: @board.length, columns: @board.first.length }
+  end
+
   def display(&val_display)
-    @board.map { |row| row.map { |val| val_display.call(cell.val) }.join }.join("\n")
+    @board.map { |row| row.map { |cell| val_display.call(cell.val) }.join }.join("\n")
   end
 
   private def in_bounds?(row_ind, col_ind)
