@@ -93,8 +93,8 @@ class Grid
     { rows: @board.length, columns: @board.first.length }
   end
 
-  def display(&val_display)
-    @board.map { |row| row.map { |cell| val_display.call(cell.val) }.join }.join("\n")
+  def display(&cell_display)
+    @board.map { |row| row.map { |cell| cell_display.call(cell) }.join }.join("\n")
   end
 
   private def in_bounds?(row_ind, col_ind)
