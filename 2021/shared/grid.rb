@@ -25,6 +25,11 @@ class Grid
 
       nil
     end
+
+    def to_s
+      "Cell<row: #{row}, col: #{col}, val: #{val}>"
+    end
+    alias inspect to_s
   end
 
   def initialize(board)
