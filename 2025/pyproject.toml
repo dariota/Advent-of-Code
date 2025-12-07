@@ -6,4 +6,5 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "pytest>=9.0.1",
+    "pytest-unordered>=0.7.0",
 ]
